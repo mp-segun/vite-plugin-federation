@@ -14,7 +14,7 @@
     "preinstall": "npx only-allow pnpm",
     "prepare": "husky install",
     "postinstall": "npx playwright install",
-    "prepublish": "find . -mindepth 1 | grep -v '^./packages' | grep -v '^./packages' | xargs rm -rf && mv ./packages/lib/* . && rm -rf ./packages && pnpm build",
+    "prepublish": "pnpm build && find . -mindepth 1 | grep -v '^./packages' | grep -v '^./packages' | xargs rm -rf && mv ./packages/lib/* . && rm -rf ./packages",
     "lint-staged": "lint-staged",
     "format": "prettier -w packages/lib/**/*.ts",
     "lint": "eslint packages/*/{src,types}/**",
