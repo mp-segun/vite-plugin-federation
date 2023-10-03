@@ -25,7 +25,7 @@ async function getSharedFromRuntime(name, shareScope) {
       // judge version satisfy
       if (satisfy(versionKey, moduleMap[name].requiredVersion)) {
         module =
-          globalModuleCache[name][versionKey] ||
+          globalModuleCache[name]?.[versionKey] ||
           (await (
             await versionValue.get()
           )())
@@ -36,7 +36,7 @@ async function getSharedFromRuntime(name, shareScope) {
       }
     } else {
       module =
-        globalModuleCache[name][versionKey] ||
+        globalModuleCache[name]?.[versionKey] ||
         (await (
           await versionValue.get()
         )())
@@ -58,6 +58,7 @@ async function getSharedFromLocal(name) {
 }
 function flattenModule(module, name, version) {
   if (module.default) module = Object.assign({}, module.default, module)
+  globalModuleCache[name] = {}
   globalModuleCache[name][version] = module
   moduleCache[name] = module
   return module
