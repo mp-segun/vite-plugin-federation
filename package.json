@@ -14,7 +14,7 @@
     "preinstall": "npx only-allow pnpm",
     "prepare": "husky install",
     "postinstall": "npx playwright install",
-    "prepublish": "cd packages/lib && pnpm build && mv -f dist types LICENSE package.json README.md ../..",
+    "prepublish": "cd packages/lib && pnpm build && rsync -a --remove-source-files dist types LICENSE package.json README.md ../../",
     "lint-staged": "lint-staged",
     "format": "prettier -w packages/lib/**/*.ts",
     "lint": "eslint packages/*/{src,types}/**",
