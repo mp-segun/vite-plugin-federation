@@ -3,7 +3,10 @@ import { satisfy } from '__federation_fn_satisfy'
 // eslint-disable-next-line no-undef
 const moduleMap = __rf_var__moduleMap
 const moduleCache = Object.create(null)
-const globalModuleCache = (globalThis.__shared_modules__ = {})
+if (!globalThis.__shared_modules__) {
+  globalThis.__shared_modules__ = {}
+}
+const globalModuleCache = globalThis.__shared_modules__
 async function importShared(name, shareScope = 'default') {
   return moduleCache[name]
     ? new Promise((r) => r(moduleCache[name]))
