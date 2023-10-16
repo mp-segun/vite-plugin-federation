@@ -15,40 +15,31 @@ async function __federation_import(name) {
 }
 async function getSharedFromRuntime(name, shareScope) {
   let module = null
-  let version = undefined
   if (globalThis?.__federation_shared__?.[shareScope]?.[name]) {
     const versionObj = globalThis.__federation_shared__[shareScope][name]
     const versionKey = Object.keys(versionObj)[0]
-    version = versionKey
     const versionValue = Object.values(versionObj)[0]
     if (moduleMap[name]?.requiredVersion) {
       // judge version satisfy
       if (satisfy(versionKey, moduleMap[name].requiredVersion)) {
-        module =
-          globalModuleCache[name]?.[versionKey] ||
-          (await (
-            await versionValue.get()
-          )())
+        module = globalModuleCache[name] || (await (await versionValue.get())())
       } else {
         console.log(
           `provider support ${name}(${versionKey}) is not satisfied requiredVersion(\${moduleMap[name].requiredVersion})`
         )
       }
     } else {
-      module =
-        globalModuleCache[name]?.[versionKey] ||
-        (await (
-          await versionValue.get()
-        )())
+      module = globalModuleCache[name] || (await (await versionValue.get())())
     }
   }
   if (module) {
-    return flattenModule(module, name, version)
+    return flattenModule(module, name)
   }
 }
 async function getSharedFromLocal(name) {
   if (moduleMap[name]?.import) {
-    let module = await (await moduleMap[name].get())()
+    let module =
+      globalModuleCache[name] || (await (await moduleMap[name].get())())
     return flattenModule(module, name)
   } else {
     console.error(
@@ -56,10 +47,12 @@ async function getSharedFromLocal(name) {
     )
   }
 }
-function flattenModule(module, name, version) {
+function flattenModule(module, name) {
   if (module.default) module = Object.assign({}, module.default, module)
-  globalModuleCache[name] = {}
-  globalModuleCache[name][version] = module
+  if (!globalModuleCache[name]) {
+    globalModuleCache[name] = {}
+    globalModuleCache[name] = module
+  }
   moduleCache[name] = module
   return module
 }
