@@ -29,8 +29,7 @@ import {
   EXPOSES_KEY_MAP,
   EXTERNALS,
   parsedOptions,
-  SHARED,
-  viteConfigResolved
+  SHARED
 } from '../public'
 import type { AcornNode, OutputAsset, OutputChunk } from 'rollup'
 import type { VitePluginFederationOptions } from 'types'
@@ -43,17 +42,9 @@ export function prodExposePlugin(
   options: VitePluginFederationOptions
 ): PluginHooks {
   let moduleMap = ''
-  const hasOptions = parsedOptions.prodExpose.some((expose) => {
-    return expose[0] === parseExposeOptions(options)[0]?.[0]
-  })
-  if (!hasOptions) {
-    parsedOptions.prodExpose = Array.prototype.concat(
-      parsedOptions.prodExpose,
-      parseExposeOptions(options)
-    )
-  }
+  parsedOptions.prodExpose = parseExposeOptions(options)
   // exposes module
-  for (const item of parseExposeOptions(options)) {
+  for (const item of parsedOptions.prodExpose) {
     const moduleName = getModuleMarker(`\${${item[0]}}`, SHARED)
     EXTERNALS.push(moduleName)
     const exposeFilepath = normalizePath(resolve(item[1].import))
@@ -67,14 +58,14 @@ export function prodExposePlugin(
       return __federation_import('\${__federation_expose_${item[0]}}').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},`
   }
 
-  // let viteConfigResolved: ResolvedConfig
+  let viteConfigResolved: ResolvedConfig
 
   return {
     name: 'originjs:expose-production',
     virtualFile: {
       // code generated for remote
       // language=JS
-      [`__remoteEntryHelper__${options.filename}`]: `
+      __remoteEntryHelper__: `
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {${moduleMap}}
     const seen = {}
@@ -115,9 +106,7 @@ export function prodExposePlugin(
     },
 
     configResolved(config: ResolvedConfig) {
-      if (config) {
-        viteConfigResolved.config = config
-      }
+      viteConfigResolved = config
     },
 
     buildStart() {
@@ -128,7 +117,7 @@ export function prodExposePlugin(
             builderInfo.assetsDir ? builderInfo.assetsDir + '/' : ''
           }${options.filename}`,
           type: 'chunk',
-          id: `__remoteEntryHelper__${options.filename}`,
+          id: '__remoteEntryHelper__',
           preserveSignature: 'strict'
         })
       }
@@ -139,10 +128,7 @@ export function prodExposePlugin(
       let remoteEntryChunk
       for (const file in bundle) {
         const chunk = bundle[file] as OutputChunk
-        if (
-          chunk?.facadeModuleId ===
-          `\0virtual:__remoteEntryHelper__${options.filename}`
-        ) {
+        if (chunk?.facadeModuleId === '\0virtual:__remoteEntryHelper__') {
           remoteEntryChunk = chunk
           break
         }
@@ -163,10 +149,7 @@ export function prodExposePlugin(
           new RegExp(`(["'])${DYNAMIC_LOADING_CSS_PREFIX}.*?\\1`, 'g'),
           (str) => {
             // when build.cssCodeSplit: false, all files are aggregated into style.xxxxxxxx.css
-            if (
-              viteConfigResolved.config &&
-              !viteConfigResolved.config.build.cssCodeSplit
-            ) {
+            if (viteConfigResolved && !viteConfigResolved.build.cssCodeSplit) {
               if (cssBundlesMap.size) {
                 return `[${[...cssBundlesMap.values()]
                   .map((cssBundle) =>
@@ -215,7 +198,7 @@ export function prodExposePlugin(
         )
 
         // replace the export file placeholder path to final chunk path
-        for (const expose of parseExposeOptions(options)) {
+        for (const expose of parsedOptions.prodExpose) {
           const module = Object.keys(bundle).find((module) => {
             const chunk = bundle[module]
             return chunk.name === EXPOSES_KEY_MAP.get(expose[0])

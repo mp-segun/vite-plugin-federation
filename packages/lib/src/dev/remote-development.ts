@@ -14,7 +14,11 @@
 // *****************************************************************************
 
 import type { UserConfig } from 'vite'
-import type { ConfigTypeSet, VitePluginFederationOptions } from 'types'
+import type {
+  ConfigTypeSet,
+  RemotesConfig,
+  VitePluginFederationOptions
+} from 'types'
 import { walk } from 'estree-walker'
 import MagicString from 'magic-string'
 import { readFileSync } from 'fs'
@@ -28,16 +32,16 @@ import {
   parseRemoteOptions,
   REMOTE_FROM_PARAMETER
 } from '../utils'
-import { builderInfo, parsedOptions, devRemotes } from '../public'
+import { builderInfo, parsedOptions } from '../public'
 import type { PluginHooks } from '../../types/pluginHooks'
 
 export function devRemotePlugin(
   options: VitePluginFederationOptions
 ): PluginHooks {
   parsedOptions.devRemote = parseRemoteOptions(options)
-  // const remotes: { id: string; regexp: RegExp; config: RemotesConfig }[] = []
+  const remotes: { id: string; regexp: RegExp; config: RemotesConfig }[] = []
   for (const item of parsedOptions.devRemote) {
-    devRemotes.push({
+    remotes.push({
       id: item[0],
       regexp: new RegExp(`^${item[0]}/.+?`),
       config: item[1]
@@ -61,10 +65,9 @@ export function devRemotePlugin(
   let viteDevServer: ViteDevServer
   return {
     name: 'originjs:remote-development',
-    virtualFile: options.remotes
-      ? {
-          __federation__: `
-${createRemotesMap(devRemotes)}
+    virtualFile: {
+      __federation__: `
+${createRemotesMap(remotes)}
 const loadJS = async (url, fn) => {
   const resolvedUrl = typeof url === 'function' ? await url() : url;
   const script = document.createElement('script')
@@ -143,14 +146,9 @@ function __federation_method_wrapDefault(module ,need){
 function __federation_method_getRemote(remoteName,  componentName){
   return __federation_method_ensure(remoteName).then((remote) => remote.get(componentName).then(factory => factory()));
 }
-
-function __federation_method_setRemote(remoteName, remoteConfig) {
-  remotesMap[remoteName] = remoteConfig;
-}
-export {__federation_method_ensure, __federation_method_getRemote , __federation_method_setRemote , __federation_method_unwrapDefault , __federation_method_wrapDefault}
+export {__federation_method_ensure, __federation_method_getRemote , __federation_method_unwrapDefault , __federation_method_wrapDefault}
 ;`
-        }
-      : { __federation__: '' },
+    },
     config(config: UserConfig) {
       // need to include remotes in the optimizeDeps.exclude
       if (parsedOptions.devRemote.length) {
@@ -220,16 +218,8 @@ export {__federation_method_ensure, __federation_method_getRemote , __federation
       const hasStaticImported = new Map<string, string>()
 
       let requiresRuntime = false
-      let manualRequired: any = null // set static import if exists
       walk(ast, {
         enter(node: any) {
-          if (
-            node.type === 'ImportDeclaration' &&
-            node.source?.value === 'virtual:__federation__'
-          ) {
-            manualRequired = node
-          }
-
           if (
             (node.type === 'ImportExpression' ||
               node.type === 'ImportDeclaration' ||
@@ -237,7 +227,7 @@ export {__federation_method_ensure, __federation_method_getRemote , __federation
             node.source?.value?.indexOf('/') > -1
           ) {
             const moduleId = node.source.value
-            const remote = devRemotes.find((r) => r.regexp.test(moduleId))
+            const remote = remotes.find((r) => r.regexp.test(moduleId))
             const needWrap = remote?.config.from === 'vite'
             if (remote) {
               requiresRuntime = true
@@ -361,13 +351,9 @@ export {__federation_method_ensure, __federation_method_getRemote , __federation
       })
 
       if (requiresRuntime) {
-        let requiresCode = `import {__federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
-        // clear static required
-        if (manualRequired) {
-          requiresCode = `import {__federation_method_setRemote, __federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
-          magicString.overwrite(manualRequired.start, manualRequired.end, ``)
-        }
-        magicString.prepend(requiresCode)
+        magicString.prepend(
+          `import {__federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
+        )
       }
       return magicString.toString()
     }
@@ -377,9 +363,11 @@ export {__federation_method_ensure, __federation_method_getRemote , __federation
     this: TransformPluginContext,
     shared: (string | ConfigTypeSet)[]
   ): Promise<string[]> {
+    const serverConfiguration = viteDevServer.config.server
+    const protocol = serverConfiguration.https ? 'https' : 'http'
+    const port = serverConfiguration.port ?? 5173
     const res: string[] = []
     if (shared.length) {
-      const serverConfiguration = viteDevServer.config.server
       const cwdPath = normalizePath(process.cwd())
 
       for (const item of shared) {
@@ -399,16 +387,32 @@ export {__federation_method_ensure, __federation_method_getRemote , __federation
         const obj = item[1]
         let str = ''
         if (typeof obj === 'object') {
-          const origin = serverConfiguration.origin
-          const pathname = relativePath ?? `/@fs/${moduleInfo.id}`
-          const url = origin
-            ? `'${origin}${pathname}'`
-            : `window.location.origin+'${pathname}'`
+          const address =
+            serverConfiguration.origin ??
+            `${protocol}://${resolveHost(serverConfiguration)}:${port}`
+          const url = relativePath
+            ? `'${address}${relativePath}'`
+            : `'${address}/@fs/${moduleInfo.id}'`
           str += `get:()=> get(${url}, ${REMOTE_FROM_PARAMETER})`
           res.push(`'${sharedName}':{'${obj.version}':{${str}}}`)
         }
       }
     }
     return res
+  }
+
+  function resolveHost(serverOptions): string {
+    const hostConfiguration = serverOptions.host
+    let host: string
+    //
+    if (
+      hostConfiguration === undefined ||
+      typeof hostConfiguration === 'boolean'
+    ) {
+      host = 'localhost'
+    } else {
+      host = hostConfiguration
+    }
+    return host
   }
 }

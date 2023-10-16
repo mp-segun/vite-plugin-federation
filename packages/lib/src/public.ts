@@ -13,9 +13,7 @@
 // SPDX-License-Identifier: MulanPSL-2.0
 // *****************************************************************************
 
-import type { ConfigTypeSet, RemotesConfig } from 'types'
-import type { ResolvedConfig } from 'vite'
-import { Remote } from './utils'
+import type { ConfigTypeSet } from 'types'
 // for generateBundle Hook replace
 export const EXPOSES_MAP = new Map()
 export const EXPOSES_KEY_MAP = new Map()
@@ -41,13 +39,4 @@ export const parsedOptions = {
   devShared: [] as (string | ConfigTypeSet)[],
   devExpose: [] as (string | ConfigTypeSet)[],
   devRemote: [] as (string | ConfigTypeSet)[]
-}
-export const devRemotes: {
-  id: string
-  regexp: RegExp
-  config: RemotesConfig
-}[] = []
-export const prodRemotes: Remote[] = []
-export const viteConfigResolved: { config: ResolvedConfig | undefined } = {
-  config: undefined
 }

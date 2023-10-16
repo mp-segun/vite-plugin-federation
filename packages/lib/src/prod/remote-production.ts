@@ -13,26 +13,22 @@
 // SPDX-License-Identifier: MulanPSL-2.0
 // *****************************************************************************
 
-import { createHash } from 'crypto'
+import type { ConfigTypeSet, VitePluginFederationOptions } from 'types'
 import { walk } from 'estree-walker'
 import MagicString from 'magic-string'
 import type { AcornNode, TransformPluginContext } from 'rollup'
-import type { ConfigTypeSet, VitePluginFederationOptions } from 'types'
-import type { PluginHooks } from '../../types/pluginHooks'
-import {
-  builderInfo,
-  EXPOSES_KEY_MAP,
-  parsedOptions,
-  prodRemotes
-} from '../public'
 import {
   createRemotesMap,
   getModuleMarker,
-  NAME_CHAR_REG,
   parseRemoteOptions,
+  Remote,
+  removeNonRegLetter,
   REMOTE_FROM_PARAMETER,
-  removeNonRegLetter
+  NAME_CHAR_REG
 } from '../utils'
+import { builderInfo, EXPOSES_KEY_MAP, parsedOptions } from '../public'
+import { basename } from 'path'
+import type { PluginHooks } from '../../types/pluginHooks'
 
 const sharedFileName2Prop: Map<string, ConfigTypeSet> = new Map<
   string,
@@ -43,9 +39,9 @@ export function prodRemotePlugin(
   options: VitePluginFederationOptions
 ): PluginHooks {
   parsedOptions.prodRemote = parseRemoteOptions(options)
-  // const remotes: Remote[] = []
+  const remotes: Remote[] = []
   for (const item of parsedOptions.prodRemote) {
-    prodRemotes.push({
+    remotes.push({
       id: item[0],
       regexp: new RegExp(`^${item[0]}/.+?`),
       config: item[1]
@@ -54,11 +50,10 @@ export function prodRemotePlugin(
 
   return {
     name: 'originjs:remote-production',
-    virtualFile: options.remotes
-      ? {
-          // language=JS
-          __federation__: `
-                ${createRemotesMap(prodRemotes)}
+    virtualFile: {
+      // language=JS
+      __federation__: `
+                ${createRemotesMap(remotes)}
                 const loadJS = async (url, fn) => {
                     const resolvedUrl = typeof url === 'function' ? await url() : url;
                     const script = document.createElement('script')
@@ -146,41 +141,23 @@ export function prodRemotePlugin(
                     return __federation_method_ensure(remoteName).then((remote) => remote.get(componentName).then(factory => factory()));
                 }
 
-                function __federation_method_setRemote(remoteName, remoteConfig) {
-                  remotesMap[remoteName] = remoteConfig;
-                }
-
                 export {
                     __federation_method_ensure,
                     __federation_method_getRemote,
-                    __federation_method_setRemote,
                     __federation_method_unwrapDefault,
                     __federation_method_wrapDefault
                 }
             `
-        }
-      : { __federation__: '' },
+    },
 
     async transform(this: TransformPluginContext, code: string, id: string) {
       if (builderInfo.isShared) {
         for (const sharedInfo of parsedOptions.prodShared) {
-          // if (!sharedInfo[1].emitFile) {
-          //   sharedInfo[1].emitFile = this.emitFile({
-          //     type: 'chunk',
-          //     id: sharedInfo[1].id ?? sharedInfo[1].packagePath,
-          //     preserveSignature: 'allow-extension',
-          //     name: `__federation_shared_${sharedInfo[0]}`
-          //   })
-          // }
           if (!sharedInfo[1].emitFile) {
             const basename = `__federation_shared_${removeNonRegLetter(
               sharedInfo[0],
               NAME_CHAR_REG
-            )}-${createHash('md5')
-              .update(sharedInfo[1].packagePath)
-              .digest('hex')
-              .toString()
-              .slice(0, 8)}.js`
+            )}.js`
             sharedInfo[1].emitFile = this.emitFile({
               type: 'chunk',
               id: sharedInfo[1].id ?? sharedInfo[1].packagePath,
@@ -201,11 +178,11 @@ export function prodRemotePlugin(
             .filter((shareInfo) => shareInfo[1].generate)
             .map(
               (sharedInfo) =>
-                `'${
-                  sharedInfo[0]
-                }':{get:()=>()=>__federation_import(import.meta.ROLLUP_FILE_URL_${
-                  sharedInfo[1].emitFile
-                }),import:${sharedInfo[1].import}${
+                `'${sharedInfo[0]}':{get:()=>()=>__federation_import('./${
+                  sharedInfo[1].root ? `${sharedInfo[1].root[0]}/` : ''
+                }${basename(
+                  this.getFileName(sharedInfo[1].emitFile)
+                )}'),import:${sharedInfo[1].import}${
                   sharedInfo[1].requiredVersion
                     ? `,requiredVersion:'${sharedInfo[1].requiredVersion}'`
                     : ''
@@ -239,8 +216,8 @@ export function prodRemotePlugin(
             const obj = arr[1]
             let str = ''
             if (typeof obj === 'object') {
-              const fileUrl = `import.meta.ROLLUP_FILE_URL_${obj.emitFile}`
-              str += `get:()=>get(${fileUrl}, ${REMOTE_FROM_PARAMETER}), loaded:1`
+              const fileName = `./${basename(this.getFileName(obj.emitFile))}`
+              str += `get:()=>get('${fileName}', ${REMOTE_FROM_PARAMETER}), loaded:1`
               res.push(`'${arr[0]}':{'${obj.version}':{${str}}}`)
             }
           })
@@ -264,7 +241,6 @@ export function prodRemotePlugin(
         let requiresRuntime = false
         let hasImportShared = false
         let modify = false
-        let manualRequired: any = null // set static import if exists
 
         walk(ast, {
           enter(node: any) {
@@ -326,13 +302,6 @@ export function prodRemotePlugin(
               }
             }
 
-            if (
-              node.type === 'ImportDeclaration' &&
-              node.source?.value === 'virtual:__federation__'
-            ) {
-              manualRequired = node
-            }
-
             // handle remote import , eg replace import {a} from 'remote/b' to dynamic import
             if (
               (node.type === 'ImportExpression' ||
@@ -341,7 +310,7 @@ export function prodRemotePlugin(
               node.source?.value?.indexOf('/') > -1
             ) {
               const moduleId = node.source.value
-              const remote = prodRemotes.find((r) => r.regexp.test(moduleId))
+              const remote = remotes.find((r) => r.regexp.test(moduleId))
               const needWrap = remote?.config.from === 'vite'
               if (remote) {
                 requiresRuntime = true
@@ -465,13 +434,9 @@ export function prodRemotePlugin(
         })
 
         if (requiresRuntime) {
-          let requiresCode = `import {__federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
-          // clear static required
-          if (manualRequired) {
-            requiresCode = `import {__federation_method_setRemote, __federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
-            magicString.overwrite(manualRequired.start, manualRequired.end, ``)
-          }
-          magicString.prepend(requiresCode)
+          magicString.prepend(
+            `import {__federation_method_ensure, __federation_method_getRemote , __federation_method_wrapDefault , __federation_method_unwrapDefault} from '__federation__';\n\n`
+          )
         }
 
         if (hasImportShared) {
