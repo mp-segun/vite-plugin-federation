@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: MulanPSL-2.0
 // *****************************************************************************
 
+import { createHash } from 'crypto'
 import { walk } from 'estree-walker'
 import MagicString from 'magic-string'
 import type { AcornNode, TransformPluginContext } from 'rollup'
@@ -27,8 +28,10 @@ import {
 import {
   createRemotesMap,
   getModuleMarker,
+  NAME_CHAR_REG,
   parseRemoteOptions,
-  REMOTE_FROM_PARAMETER
+  REMOTE_FROM_PARAMETER,
+  removeNonRegLetter
 } from '../utils'
 
 const sharedFileName2Prop: Map<string, ConfigTypeSet> = new Map<
@@ -161,13 +164,35 @@ export function prodRemotePlugin(
     async transform(this: TransformPluginContext, code: string, id: string) {
       if (builderInfo.isShared) {
         for (const sharedInfo of parsedOptions.prodShared) {
+          // if (!sharedInfo[1].emitFile) {
+          //   sharedInfo[1].emitFile = this.emitFile({
+          //     type: 'chunk',
+          //     id: sharedInfo[1].id ?? sharedInfo[1].packagePath,
+          //     preserveSignature: 'allow-extension',
+          //     name: `__federation_shared_${sharedInfo[0]}`
+          //   })
+          // }
           if (!sharedInfo[1].emitFile) {
+            const basename = `__federation_shared_${removeNonRegLetter(
+              sharedInfo[0],
+              NAME_CHAR_REG
+            )}-${createHash('md5')
+              .update(sharedInfo[1].packagePath)
+              .digest('hex')
+              .toString()
+              .slice(0, 8)}.js`
             sharedInfo[1].emitFile = this.emitFile({
               type: 'chunk',
               id: sharedInfo[1].id ?? sharedInfo[1].packagePath,
+              fileName: `${
+                builderInfo.assetsDir ? builderInfo.assetsDir + '/' : ''
+              }${
+                sharedInfo[1].root ? sharedInfo[1].root[0] + '/' : ''
+              }${basename}`,
               preserveSignature: 'allow-extension',
-              name: `__federation_shared_${sharedInfo[0]}`
+              name: sharedInfo[0]
             })
+            sharedFileName2Prop.set(basename, sharedInfo as ConfigTypeSet)
           }
         }
 
