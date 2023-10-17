@@ -218,24 +218,26 @@ export default function federation(
             /import\s*{((\s*[a-zA-Z]+\s*as\s*[a-zA-Z]+\s*,?)+)}\s*from\s*'\.\/__federation_shared_.*?\.js'/g
 
           // Check if importShared is not already imported before the replacements
-          if (!fileContent.includes(importSharedStatement)) {
-            fileContent = `${importSharedStatement}\n${fileContent}`
-          } else if (
-            importSharedIndex >
-            fileContent.indexOf(importSharedRegex.toString())
-          ) {
-            // Move importShared to the top
-            fileContent = fileContent.replace(importSharedStatement, '')
-            fileContent = `${importSharedStatement}\n${fileContent}`
-          }
+          if (importSharedRegex.test(fileContent)) {
+            if (!fileContent.includes(importSharedStatement)) {
+              fileContent = `${importSharedStatement}\n${fileContent}`
+            } else if (
+              importSharedIndex >
+              fileContent.indexOf(importSharedRegex.toString())
+            ) {
+              // Move importShared to the top
+              fileContent = fileContent.replace(importSharedStatement, '')
+              fileContent = `${importSharedStatement}\n${fileContent}`
+            }
 
-          const dependencies = ['react', 'react-router-dom', 'react-dom']
-          for (const dep of dependencies) {
-            fileContent = replaceSharedImports(fileContent, dep)
-          }
+            const dependencies = ['react', 'react-router-dom', 'react-dom']
+            for (const dep of dependencies) {
+              fileContent = replaceSharedImports(fileContent, dep)
+            }
 
-          // Write the modified content back to the bundle
-          fs.writeFileSync(filePath, fileContent)
+            // Write the modified content back to the bundle
+            fs.writeFileSync(filePath, fileContent)
+          }
         }
       }
     }
