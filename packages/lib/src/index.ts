@@ -206,10 +206,11 @@ export default function federation(
     },
 
     writeBundle(_, bundle) {
-      const isHost = !!(
-        parsedOptions.prodRemote.length || parsedOptions.devRemote.length
+      const isRemote = !!(
+        parsedOptions.prodExpose.length || parsedOptions.devExpose.length
       )
-      if (!isHost) {
+
+      if (isRemote) {
         for (const key in bundle) {
           const file = bundle[key]
           if (file.type === 'chunk') {
