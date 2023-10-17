@@ -32,6 +32,13 @@ import { prodExposePlugin } from './prod/expose-production'
 import { devSharedPlugin } from './dev/shared-development'
 import { devRemotePlugin } from './dev/remote-development'
 import { devExposePlugin } from './dev/expose-development'
+import fs from 'fs'
+
+type CustomOutputChunk = {
+  type: 'chunk' | 'asset'
+  code: string
+  fileName: string
+}
 
 export default function federation(
   options: VitePluginFederationOptions
@@ -200,6 +207,24 @@ export default function federation(
     generateBundle: function (_options, bundle, isWrite) {
       for (const pluginHook of pluginList) {
         pluginHook.generateBundle?.call(this, _options, bundle, isWrite)
+      }
+    },
+
+    writeBundle(_, bundle) {
+      for (const key in bundle) {
+        if (bundle[key].fileName.includes('jsx-runtime')) {
+          const filePath = bundle[key].fileName
+          const fileContent = (bundle[key] as CustomOutputChunk).code
+
+          // Modify the fileContent here
+          const modifiedContent = fileContent.replace(
+            /import { r as reactExports } from '.\/__federation_shared_react.js';/,
+            "import { importShared } from './__federation_fn_import.js';\n\nconst { r: reactExports } = await importShared('react');"
+          )
+
+          // Write the modified content back to the bundle
+          fs.writeFileSync(filePath, modifiedContent)
+        }
       }
     }
   }
