@@ -11,7 +11,7 @@ export const replaceSharedImports = (fileContent: string, dep: string) => {
       const imports = namedImports
         .map((pair) => (pair.length > 1 ? `${pair[0]}: ${pair[1]}` : pair[0]))
         .join(', ')
-      return `const { ${imports} } = await importShared('${dep}');`
+      return `const { ${imports} } = await importShared('${dep}')`
     }
   )
 }
