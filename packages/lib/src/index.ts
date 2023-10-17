@@ -33,6 +33,7 @@ import { devSharedPlugin } from './dev/shared-development'
 import { devRemotePlugin } from './dev/remote-development'
 import { devExposePlugin } from './dev/expose-development'
 import fs from 'fs'
+import { replaceSharedImports } from './utils/replace-shared-import'
 
 type CustomOutputChunk = {
   type: 'chunk' | 'asset'
@@ -212,18 +213,18 @@ export default function federation(
 
     writeBundle(_, bundle) {
       for (const key in bundle) {
-        if (bundle[key].fileName.includes('jsx-runtime')) {
-          const filePath = `./dist/` + bundle[key].fileName
-          const fileContent = (bundle[key] as CustomOutputChunk).code
+        const file = bundle[key]
+        if (file.type === 'chunk') {
+          const filePath = `./dist/` + file.fileName
+          let fileContent = file.code
 
-          // Modify the fileContent here
-          const modifiedContent = fileContent.replace(
-            /import { r as reactExports } from '.\/__federation_shared_react.js';/,
-            "import { importShared } from './__federation_fn_import.js';\n\nconst { r: reactExports } = await importShared('react');"
-          )
+          const dependencies = ['react', 'react-dom']
+          for (const dep of dependencies) {
+            fileContent = replaceSharedImports(fileContent, dep)
+          }
 
           // Write the modified content back to the bundle
-          fs.writeFileSync(filePath, modifiedContent)
+          fs.writeFileSync(filePath, fileContent)
         }
       }
     }
