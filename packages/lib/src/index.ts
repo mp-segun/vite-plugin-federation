@@ -205,12 +205,29 @@ export default function federation(
       }
     },
 
-    writeBundle(options, bundle) {
+    writeBundle(_, bundle) {
       for (const key in bundle) {
         const file = bundle[key]
         if (file.type === 'chunk') {
           const filePath = `./dist/` + file.fileName
           let fileContent = file.code
+
+          const importSharedStatement = `import { importShared } from './__federation_fn_import.js';`
+          const importSharedIndex = fileContent.indexOf(importSharedStatement)
+          const importSharedRegex =
+            /import\s*{((\s*[a-zA-Z]+\s*as\s*[a-zA-Z]+\s*,?)+)}\s*from\s*'\.\/__federation_shared_.*?\.js'/g
+
+          // Check if importShared is not already imported before the replacements
+          if (!fileContent.includes(importSharedStatement)) {
+            fileContent = `${importSharedStatement}\n${fileContent}`
+          } else if (
+            importSharedIndex >
+            fileContent.indexOf(importSharedRegex.toString())
+          ) {
+            // Move importShared to the top
+            fileContent = fileContent.replace(importSharedStatement, '')
+            fileContent = `${importSharedStatement}\n${fileContent}`
+          }
 
           const dependencies = ['react', 'react-router-dom', 'react-dom']
           for (const dep of dependencies) {
