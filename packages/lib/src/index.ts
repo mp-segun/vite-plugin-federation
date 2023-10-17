@@ -213,7 +213,7 @@ export default function federation(
     writeBundle(_, bundle) {
       for (const key in bundle) {
         if (bundle[key].fileName.includes('jsx-runtime')) {
-          const filePath = bundle[key].fileName
+          const filePath = `./dist/` + bundle[key].fileName
           const fileContent = (bundle[key] as CustomOutputChunk).code
 
           // Modify the fileContent here
