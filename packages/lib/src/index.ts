@@ -35,12 +35,6 @@ import { devExposePlugin } from './dev/expose-development'
 import fs from 'fs'
 import { replaceSharedImports } from './utils/replace-shared-import'
 
-type CustomOutputChunk = {
-  type: 'chunk' | 'asset'
-  code: string
-  fileName: string
-}
-
 export default function federation(
   options: VitePluginFederationOptions
 ): Plugin {
@@ -211,14 +205,14 @@ export default function federation(
       }
     },
 
-    writeBundle(_, bundle) {
+    writeBundle(options, bundle) {
       for (const key in bundle) {
         const file = bundle[key]
         if (file.type === 'chunk') {
           const filePath = `./dist/` + file.fileName
           let fileContent = file.code
 
-          const dependencies = ['react', 'react-dom']
+          const dependencies = ['react', 'react-router-dom', 'react-dom']
           for (const dep of dependencies) {
             fileContent = replaceSharedImports(fileContent, dep)
           }
